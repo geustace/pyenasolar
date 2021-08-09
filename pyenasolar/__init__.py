@@ -130,7 +130,7 @@ class EnaSolar(object):
                        find = xml.find(sen.key)
                        if find is not None:
                            sen.value = find.text
-                           if sen.is_hex
+                           if sen.is_hex:
                                sen.value = int(sen.value, 16)
                            sen.date = date.today()
                            sen.enabled = True
@@ -155,7 +155,7 @@ class EnaSolar(object):
                        find = xml.find(sen.key)
                        if find is not None:
                            sen.value = find.text
-                           if sen.is_hex
+                           if sen.is_hex:
                                sen.value = int(sen.value, 16)
                            sen.date = date.today()
                            sen.enabled = True
