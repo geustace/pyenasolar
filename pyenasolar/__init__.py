@@ -133,7 +133,7 @@ class EnaSolar(object):
                            sen.value = find.text
                            if sen.is_hex:
                                sen.value = int(sen.value, 16)
-                           sen.value = sen.value * sen.factor
+                           sen.value = (float(sen.value) * sen.factor)
                            sen.date = date.today()
                            sen.enabled = True
                            at_least_one_enabled = True
@@ -159,7 +159,7 @@ class EnaSolar(object):
                            sen.value = find.text
                            if sen.is_hex:
                                sen.value = int(sen.value, 16)
-                           sen.value = sen.value * sen.factor
+                           sen.value = (float(sen.value) * sen.factor)
                            sen.date = date.today()
                            sen.enabled = True
                            at_least_one_enabled = True
