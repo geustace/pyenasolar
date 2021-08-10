@@ -23,12 +23,13 @@ URL_PATH_DATA   = "data.xml"
 class Sensor(object):
     """Sensor definition"""
 
-    def __init__(self, key, is_hex, name, unit='',
+    def __init__(self, key, is_hex, name, factor, unit='',
                  per_day_basis=False, per_total_basis=False):
         self.key = key
-        self.factor = factor
+        self.is_hex = is_hex
         self.name = name
         self.unit = unit
+        self.factor = factor
         self.value = None
         self.per_day_basis = per_day_basis
         self.per_total_basis = per_total_basis
@@ -43,19 +44,19 @@ class Sensors(object):
         self.__s = []
         self.add(
             (
-                Sensor("OutputPower", False, "output_power", "kWh"),
-                Sensor("InputVoltage", False, "input_voltage_1", "V"),
-                Sensor("Inputvoltage2", False, "input_voltage_2", "V"),
-                Sensor("OutputVoltage", False, "output_voltage", "V"),
-                Sensor("Irradiance", False, "irradiance", "W/m2"),
-                Sensor("Temperature", False, "tempertature", "C"),
-                Sensor("EnergyToday", True, "today_energy", "kWh", True),
-                Sensor("EnergyYesterday", True, "yesterday_energy", "kWh", True), 
-                Sensor("EnergyLifetime", True, "total_energy", "kWh", False, True),
-                Sensor("DaysProducing", True, "days_producing", "d", False, True).
-                Sensor("HoursExportedToday", True, "today_hours", "h", True),
-                Sensor("HoursExportedYesterday", True, "yesterday_hours", "h", True),
-                Sensor("HoursExportedLifetime", True, "total_hours", "h", False, True),
+                Sensor("OutputPower", False, "output_power", 1, "kWh"),
+                Sensor("InputVoltage", False, "input_voltage_1", 1, "V"),
+                Sensor("InputVoltage2", False, "input_voltage_2", 1, "V"),
+                Sensor("OutputVoltage", False, "output_voltage", 1, "V"),
+                Sensor("Irradiance", False, "irradiance", 1, "W/m2"),
+                Sensor("Temperature", False, "tempertature", 1, "C"),
+                Sensor("EnergyToday", True, "today_energy", 0.01, "kWh", True),
+                Sensor("EnergyYesterday", True, "yesterday_energy", 0.01, "kWh", True), 
+                Sensor("EnergyLifetime", True, "total_energy", 0.01, "kWh", False, True),
+                Sensor("DaysProducing", True, "days_producing", 1, "d", False, True),
+                Sensor("HoursExportedToday", False, "today_hours", 0.0167, "h", True),
+                Sensor("HoursExportedYesterday", True, "yesterday_hours", 0.0167, "h", True),
+                Sensor("HoursExportedLifetime", True, "total_hours", 0.0167, "h", False, True),
             )
         )
 
@@ -132,6 +133,7 @@ class EnaSolar(object):
                            sen.value = find.text
                            if sen.is_hex:
                                sen.value = int(sen.value, 16)
+                           sen.value = sen.value * sen.factor
                            sen.date = date.today()
                            sen.enabled = True
                            at_least_one_enabled = True
@@ -157,6 +159,7 @@ class EnaSolar(object):
                            sen.value = find.text
                            if sen.is_hex:
                                sen.value = int(sen.value, 16)
+                           sen.value = sen.value * sen.factor
                            sen.date = date.today()
                            sen.enabled = True
                            at_least_one_enabled = True
