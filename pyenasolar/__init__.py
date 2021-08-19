@@ -1,29 +1,27 @@
 """PyEnaSolar interacts as a library to communicate with EnaSolar inverters"""
-import aiohttp
 import asyncio
 import concurrent
+import re
 from io import StringIO
 from datetime import date
 import logging
 import xml.etree.ElementTree as ET
+import aiohttp
 
 _LOGGER = logging.getLogger(__name__)
-
-MAPPER_STATES = {
-    "0": "Not connected",
-    "1": "Waiting",
-    "2": "Normal",
-    "3": "Error",
-    "4": "Upgrading",
-}
 
 URL_PATH_METERS = "meters.xml"
 URL_PATH_DATA   = "data.xml"
 
+HAS_POWER_METER = 1
+HAS_SOLAR_METER = 2
+HAS_TEMPERATURE = 4
+USE_FAHRENHIET  = 256
+
 class Sensor(object):
     """Sensor definition"""
 
-    def __init__(self, key, is_hex, name, factor, unit='',
+    def __init__(self, key, is_hex, name, factor, is_meter, unit='',
                  per_day_basis=False, per_total_basis=False):
         self.key = key
         self.is_hex = is_hex
@@ -31,34 +29,68 @@ class Sensor(object):
         self.unit = unit
         self.factor = factor
         self.value = None
+        self.is_meter = is_meter
         self.per_day_basis = per_day_basis
         self.per_total_basis = per_total_basis
         self.date = date.today()
-        self.enabled = False
+        self.enabled = True
 
 
 class Sensors(object):
     """EnaSolar sensors"""
 
-    def __init__(self):
+    def __init__(self,inv):
         self.__s = []
         self.add(
             (
-                Sensor("OutputPower", False, "output_power", 1, "kWh"),
-                Sensor("InputVoltage", False, "input_voltage_1", 1, "V"),
-                Sensor("InputVoltage2", False, "input_voltage_2", 1, "V"),
-                Sensor("OutputVoltage", False, "output_voltage", 1, "V"),
-                Sensor("Irradiance", False, "irradiance", 1, "W/m2"),
-                Sensor("Temperature", False, "tempertature", 1, "C"),
-                Sensor("EnergyToday", True, "today_energy", 0.01, "kWh", True),
-                Sensor("EnergyYesterday", True, "yesterday_energy", 0.01, "kWh", True), 
-                Sensor("EnergyLifetime", True, "total_energy", 0.01, "kWh", False, True),
-                Sensor("DaysProducing", True, "days_producing", 1, "d", False, True),
-                Sensor("HoursExportedToday", False, "today_hours", 0.0167, "h", True),
-                Sensor("HoursExportedYesterday", True, "yesterday_hours", 0.0167, "h", True),
-                Sensor("HoursExportedLifetime", True, "total_hours", 0.0167, "h", False, True),
+                Sensor("OutputPower", False, "output_power", 1, True, "kWh"),
+                Sensor("InputVoltage", False, "input_voltage_1", 1, True, "V"),
+                Sensor("OutputVoltage", False, "output_voltage", 1, True, "V"),
+                Sensor("EnergyToday", True, "today_energy", 0.01, False, "kWh", True),
+                Sensor("EnergyYesterday", True, "yesterday_energy", 0.01, False, "kWh", True),
+                Sensor("EnergyLifetime", True, "total_energy", 0.01, False, "kWh", False, True),
+                Sensor("DaysProducing", True, "days_producing", 1, False, "d", False, True),
+                Sensor("HoursExportedToday", False, "today_hours", 0.0167, False, "h", True),
+                Sensor("HoursExportedYesterday", False, "yesterday_hours", 0.0167, False, "h", True),
+                Sensor("HoursExportedLifetime", True, "total_hours", 0.0167, False, "h", False, True),
+                Sensor("Utilisation", False, "utilisation", 1, True, "%"),
+                Sensor("AverageDailyPower", False, "average_daily_power", 1, False, "kWh", True, True),
             )
         )
+        if inv.dc_strings == 2:
+            self.add(
+                (
+                    Sensor("InputVoltage2", False, "input_voltage_2", 1, True, "V")
+                )
+            )
+
+        if inv.capability & HAS_POWER_METER:
+            self.add(
+                (
+                    Sensor("MeterToday", True, "meter_today", 1, False, "kWh"),
+                    Sensor("MeterYesterday", True, "meter_yesterday", 10, False, "kWh"),
+                    Sensor("MeterLifetime", True, "meter_lifetime", 1, False, "kWh"),
+                )
+            )
+
+        if inv.capability & HAS_SOLAR_METER:
+            self.add(
+                (
+                    Sensor("Irradiance", False, "irradiance", 1, True, "W/m2"),
+                    Sensor("InsolationToday", True, "insolation_today", 0.001, False, "kWh/m2"),
+                    Sensor("InsolationYesterday", True, "insolation_yesterday", 0.001, False, "kWh/m2"),
+                )
+            )
+
+        if inv.capability & HAS_TEMPERATURE:
+            t_unit = "C"
+            if inv.capability & USE_FAHRENHIET:
+                t_unit = "F"
+            self.add(
+                (
+                    Sensor("Temperature", False, "temperature", 1, True, t_unit),
+                )
+            )
 
     def __len__(self):
         """Length."""
@@ -109,16 +141,61 @@ class EnaSolar(object):
 
     def __init__(self, host):
         self.host = host
-
         self.url = "http://{0}/".format(self.host)
+        self.capability = None
+        self.dc_strings = None
+        self.max_output = None
+        self.sensors    = None
 
-    async def read(self, sensors):
-        """Returns necessary sensors from EnaSolar inverter"""
+    async def model(self):
+        """Attempt to determine the model, dc strings and capabitity"""
+
+        _LOGGER.debug("Attempt to determine Inverter model")
+        try:
+            timeout=aiohttp.ClientTimeout(total=5)
+            async with aiohttp.ClientSession(timeout=timeout,
+                                             raise_for_status=True) as session:
+                """ Get the first main page and extract the m from the script"""
+
+                current_url = self.url
+
+                async with session.get(current_url) as response:
+                    data = await response.text()
+                    pat = re.compile( r'Number\("(\d+|\d+\.\d+)"\);', re.M|re.I )
+                    cap = pat.findall(data)
+                    self.capability = int(cap[0])
+                    self.dc_strings = int(cap[1])
+                    self.max_output = float(cap[2])
+
+            _LOGGER.debug("Model returned: CAP=%s, DC=%s, Max=%s",
+                          self.capability, self.dc_strings, self.max_output)
+            self.sensors = Sensors( self )
+
+            return True
+
+        except (aiohttp.client_exceptions.ClientConnectorError,
+                concurrent.futures._base.TimeoutError):
+            # Connection to inverter not possible.
+            _LOGGER.warning("Connection to EnaSolar inverter is not possible. " +
+                            "Otherwise check host/ip address.")
+            return False
+
+        except aiohttp.client_exceptions.ClientResponseError as err:
+            # 401 Unauthorized: wrong username/password
+            if err.status == 401:
+                raise UnauthorizedException(err)
+            else:
+                raise UnexpectedResponseException(err)
+
+    async def read_meters(self):
+        """Returns meter sensors from EnaSolar inverter"""
 
         try:
             timeout = aiohttp.ClientTimeout(total=5)
             async with aiohttp.ClientSession(timeout=timeout,
                                              raise_for_status=True) as session:
+                """ Get the first XML page and extract the meter readings"""
+
                 current_url = self.url + URL_PATH_METERS
 
                 async with session.get(current_url) as response:
@@ -127,23 +204,67 @@ class EnaSolar(object):
 
                     xml = ET.fromstring(data)
 
-                    for sen in sensors:
-                       find = xml.find(sen.key)
-                       if find is not None:
-                           sen.value = find.text
-                           if sen.is_hex:
-                               sen.value = int(sen.value, 16)
-                           sen.value = (float(sen.value) * sen.factor)
-                           sen.date = date.today()
-                           sen.enabled = True
-                           at_least_one_enabled = True
+                    for sen in self.sensors:
+                        if not sen.is_meter:
+                            continue
+                        find = xml.find(sen.key)
+                        if find is not None:
+                            sen.value = find.text
+                            if sen.is_hex:
+                                sen.value = int(sen.value, 16)
+                            sen.value = (float(sen.value) * sen.factor)
+                            sen.date = date.today()
+                            sen.enabled = True
+                            at_least_one_enabled = True
+
+                        if sen.enabled:
+                            _LOGGER.debug("Set METER sensor %s => %s",
+                                          sen.name, sen.value)
 
                     if not at_least_one_enabled:
                         raise ET.ParseError
 
-                    if sen.enabled:
-                        _LOGGER.debug("Got new value for sensor %s: %s",
-                                      sen.name, sen.value)
+                """Calculate the derived sensors"""
+
+                sen1 = self.sensors.__getitem__("OutputPower")
+                sen2 = self.sensors.__getitem__("Utilisation")
+                sen2.value = round((float(sen1.value) * 100 / self.max_output), 2)
+                sen2.date = date.today()
+                sen2.enabled = True
+                _LOGGER.debug("Set CALC sensor %s => %s",
+                              sen2.name, sen2.value)
+
+                return True
+
+        except (aiohttp.client_exceptions.ClientConnectorError,
+                concurrent.futures._base.TimeoutError):
+            # Connection to inverter not possible.
+            _LOGGER.warning("Connection to EnaSolar inverter is not possible. " +
+                            "Otherwise check host/ip address.")
+            return False
+
+        except aiohttp.client_exceptions.ClientResponseError as err:
+            # 401 Unauthorized: wrong username/password
+            if err.status == 401:
+                raise UnauthorizedException(err)
+            else:
+                raise UnexpectedResponseException(err)
+
+        except ET.ParseError:
+            # XML is not valid or even no XML at all
+            raise UnexpectedResponseException(
+                str.format("No valid XML received from {0} at {1}", self.host,
+                           current_url)
+            )
+
+    async def read_data(self):
+        """Returns meter sensors from EnaSolar inverter"""
+
+        try:
+            timeout = aiohttp.ClientTimeout(total=5)
+            async with aiohttp.ClientSession(timeout=timeout,
+                                             raise_for_status=True) as session:
+                """ Get the second XML page and extract the cummulative data"""
 
                 current_url = self.url + URL_PATH_DATA
 
@@ -153,32 +274,46 @@ class EnaSolar(object):
 
                     xml = ET.fromstring(data)
 
-                    for sen in sensors:
-                       find = xml.find(sen.key)
-                       if find is not None:
-                           sen.value = find.text
-                           if sen.is_hex:
-                               sen.value = int(sen.value, 16)
-                           sen.value = (float(sen.value) * sen.factor)
-                           sen.date = date.today()
-                           sen.enabled = True
-                           at_least_one_enabled = True
+                    for sen in self.sensors:
+                        if sen.is_meter:
+                            continue
+                        find = xml.find(sen.key)
+                        if find is not None:
+                            sen.value = find.text
+                            if sen.is_hex:
+                                sen.value = int(sen.value, 16)
+                            sen.value = (float(sen.value) * sen.factor)
+                            if sen.unit == 'h':
+                                sen.value = '{:,d}:{:02d}'.format(
+                                        *divmod(int(sen.value*60),60)
+                                        )
+                            sen.date = date.today()
+                            sen.enabled = True
+                            at_least_one_enabled = True
+
+                        if sen.enabled:
+                            _LOGGER.debug("Set DATA sensor %s => %s",
+                                          sen.name, sen.value)
 
                     if not at_least_one_enabled:
                         raise ET.ParseError
 
-                    if sen.enabled:
-                        _LOGGER.debug("Got new value for sensor %s: %s",
-                                      sen.name, sen.value)
+                """Calculate the derived sensors"""
 
-                    return True
+                sen1 = self.sensors.__getitem__("EnergyLifetime")
+                sen2 = self.sensors.__getitem__("DaysProducing")
+                sen3 = self.sensors.__getitem__("AverageDailyPower")
+                sen3.value = round((float(sen1.value) / sen2.value), 2)
+                sen3.date = date.today()
+                sen3.enabled = True
+                _LOGGER.debug("Set CALC sensor %s => %s",
+                              sen3.name, sen3.value)
+
+                return True
 
         except (aiohttp.client_exceptions.ClientConnectorError,
                 concurrent.futures._base.TimeoutError):
             # Connection to inverter not possible.
-            # This can be "normal" - so warning instead of error - as SAJ
-            # inverters are powered by DC and thus have no power after the sun
-            # has set.
             _LOGGER.warning("Connection to EnaSolar inverter is not possible. " +
                             "Otherwise check host/ip address.")
             return False
