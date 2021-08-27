@@ -142,60 +142,84 @@ class EnaSolar(object):
     def __init__(self, host):
         self.host = host
         self.url = "http://{0}/".format(self.host)
+        self.serial_no  = None
         self.capability = None
         self.dc_strings = None
         self.max_output = None
         self.sensors    = None
 
-    async def model(self):
-        """Attempt to determine the model, dc strings and capabitity"""
+    def setup_sensors(self):
+        self.sensors = Sensors( self )
 
-        _LOGGER.debug("Attempt to determine Inverter model")
+    def get_serial_no(self):
+        return self.serial_no
+
+    def get_capability(self):
+        return self.capability
+
+    def get_dc_strings(self):
+        return self.dc_strings
+
+    def get_max_output(self):
+        return self.max_output
+
+    async def interogate_inverter(self):
+        _LOGGER.debug("Attempt to determine the Inverter's Serial No.")
         try:
-            timeout=aiohttp.ClientTimeout(total=5)
+            timeout=aiohttp.ClientTimeout(total=30)
             async with aiohttp.ClientSession(timeout=timeout,
                                              raise_for_status=True) as session:
-                """ Get the first main page and extract the m from the script"""
+                current_url = self.url + "settings.html"
+                try:
+                    async with session.get(current_url) as response:
+                        data = await response.text()
+                        pat = re.compile( r'\(Number\(\("(\d+)"\)\*(\d+)\)\+Number\("(\d+)"\)\)', re.M|re.I )
+                        sn = pat.findall(data)
+                        self.serial_no = int(sn[0][0]) * int(sn[0][1]) + int(sn[0][2])
 
-                current_url = self.url
+                    _LOGGER.debug("Found Serial No. %s", self.serial_no)
 
-                async with session.get(current_url) as response:
-                    data = await response.text()
-                    pat = re.compile( r'Number\("(\d+|\d+\.\d+)"\);', re.M|re.I )
-                    cap = pat.findall(data)
-                    self.capability = int(cap[0])
-                    self.dc_strings = int(cap[1])
-                    self.max_output = float(cap[2])
-
-            _LOGGER.debug("Model returned: CAP=%s, DC=%s, Max=%s",
-                          self.capability, self.dc_strings, self.max_output)
-            self.sensors = Sensors( self )
-
-            return True
-
-        except (aiohttp.client_exceptions.ClientConnectorError,
-                concurrent.futures._base.TimeoutError):
-            # Connection to inverter not possible.
-            _LOGGER.warning("Connection to EnaSolar inverter is not possible. " +
-                            "Otherwise check host/ip address.")
-            return False
+                except aiohttp.ClientConnectorError as err:
+                    # Connection to inverter not possible.
+                    _LOGGER.warning("Connection to inverter failed. " +
+                                    "Check FQDN or IP address - " + str(err))
+                    raise Exception("No Data")
 
         except aiohttp.client_exceptions.ClientResponseError as err:
-            # 401 Unauthorized: wrong username/password
-            if err.status == 401:
-                raise UnauthorizedException(err)
-            else:
-                raise UnexpectedResponseException(err)
+            raise UnexpectedResponseException(err)
 
-    async def read_meters(self):
-        """Returns meter sensors from EnaSolar inverter"""
-
+        _LOGGER.debug("Attempt to determine Inverter model setup and capabilities")
         try:
-            timeout = aiohttp.ClientTimeout(total=5)
+            timeout=aiohttp.ClientTimeout(total=30)
             async with aiohttp.ClientSession(timeout=timeout,
                                              raise_for_status=True) as session:
-                """ Get the first XML page and extract the meter readings"""
+                current_url = self.url
+                try:
+                    async with session.get(current_url) as response:
+                        data = await response.text()
+                        pat = re.compile(r'Number\("(\d+|\d+\.\d+)"\);', re.M|re.I )
+                        cap = pat.findall(data)
+                        self.capability = int(cap[0])
+                        self.dc_strings = int(cap[1])
+                        self.max_output = float(cap[2])
 
+                    _LOGGER.debug("Found: CAP=%s, DC=%s, Max=%s",
+                                  self.capability, self.dc_strings, self.max_output)
+
+                except aiohttp.ClientConnectorError as err:
+                    # Connection to inverter not possible.
+                    _LOGGER.warning("Connection to inverter failed. " +
+                                    "Check FQDN or IP address - " + str(err))
+                    raise Exception("No Data")
+
+        except aiohttp.client_exceptions.ClientResponseError as err:
+            raise UnexpectedResponseException(err)
+
+    async def read_meters(self):
+        try:
+            timeout = aiohttp.ClientTimeout(total=30)
+            async with aiohttp.ClientSession(timeout=timeout,
+                                             raise_for_status=True) as session:
                 current_url = self.url + URL_PATH_METERS
 
                 async with session.get(current_url) as response:
@@ -236,19 +260,14 @@ class EnaSolar(object):
 
                 return True
 
-        except (aiohttp.client_exceptions.ClientConnectorError,
-                concurrent.futures._base.TimeoutError):
+        except aiohttp.client_exceptions.ClientConnectorError as err:
             # Connection to inverter not possible.
-            _LOGGER.warning("Connection to EnaSolar inverter is not possible. " +
-                            "Otherwise check host/ip address.")
-            return False
+            _LOGGER.warning("Connection to inverter failed. " +
+                            "Check FQDN or IP address - " + str(err))
+            raise Exception("No Data")
 
         except aiohttp.client_exceptions.ClientResponseError as err:
-            # 401 Unauthorized: wrong username/password
-            if err.status == 401:
-                raise UnauthorizedException(err)
-            else:
-                raise UnexpectedResponseException(err)
+            raise UnexpectedResponseException(err)
 
         except ET.ParseError:
             # XML is not valid or even no XML at all
@@ -258,14 +277,10 @@ class EnaSolar(object):
             )
 
     async def read_data(self):
-        """Returns meter sensors from EnaSolar inverter"""
-
         try:
-            timeout = aiohttp.ClientTimeout(total=5)
+            timeout = aiohttp.ClientTimeout(total=30)
             async with aiohttp.ClientSession(timeout=timeout,
                                              raise_for_status=True) as session:
-                """ Get the second XML page and extract the cummulative data"""
-
                 current_url = self.url + URL_PATH_DATA
 
                 async with session.get(current_url) as response:
@@ -311,19 +326,13 @@ class EnaSolar(object):
 
                 return True
 
-        except (aiohttp.client_exceptions.ClientConnectorError,
-                concurrent.futures._base.TimeoutError):
+        except aiohttp.client_exceptions.ClientConnectorError as err:
             # Connection to inverter not possible.
-            _LOGGER.warning("Connection to EnaSolar inverter is not possible. " +
-                            "Otherwise check host/ip address.")
-            return False
+            _LOGGER.warning("Connection to inverter failed. " + str(err))
+            raise Exception("No Data")
 
         except aiohttp.client_exceptions.ClientResponseError as err:
-            # 401 Unauthorized: wrong username/password
-            if err.status == 401:
-                raise UnauthorizedException(err)
-            else:
-                raise UnexpectedResponseException(err)
+            raise UnexpectedResponseException(err)
 
         except ET.ParseError:
             # XML is not valid or even no XML at all
