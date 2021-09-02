@@ -184,6 +184,8 @@ class EnaSolar(object):
                     _LOGGER.warning("Connection to inverter failed. " +
                                     "Check FQDN or IP address - " + str(err))
                     raise Exception("No Data")
+                except asyncio.TimeoutError:
+                    return False
 
         except aiohttp.client_exceptions.ClientResponseError as err:
             raise UnexpectedResponseException(err)
@@ -211,6 +213,8 @@ class EnaSolar(object):
                     _LOGGER.warning("Connection to inverter failed. " +
                                     "Check FQDN or IP address - " + str(err))
                     raise Exception("No Data")
+                except asyncio.TimeoutError:
+                    return False
 
         except aiohttp.client_exceptions.ClientResponseError as err:
             raise UnexpectedResponseException(err)
@@ -222,43 +226,47 @@ class EnaSolar(object):
                                              raise_for_status=True) as session:
                 current_url = self.url + URL_PATH_METERS
 
-                async with session.get(current_url) as response:
-                    data = await response.text()
-                    at_least_one_enabled = False
+                try:
+                    async with session.get(current_url) as response:
+                        data = await response.text()
+                        at_least_one_enabled = False
 
-                    xml = ET.fromstring(data)
+                        xml = ET.fromstring(data)
 
-                    for sen in self.sensors:
-                        if not sen.is_meter:
-                            continue
-                        find = xml.find(sen.key)
-                        if find is not None:
-                            sen.value = find.text
-                            if sen.is_hex:
-                                sen.value = int(sen.value, 16)
-                            sen.value = (float(sen.value) * sen.factor)
-                            sen.date = date.today()
-                            sen.enabled = True
-                            at_least_one_enabled = True
+                        for sen in self.sensors:
+                            if not sen.is_meter:
+                                continue
+                            find = xml.find(sen.key)
+                            if find is not None:
+                                sen.value = find.text
+                                if sen.is_hex:
+                                    sen.value = int(sen.value, 16)
+                                sen.value = (float(sen.value) * sen.factor)
+                                sen.date = date.today()
+                                sen.enabled = True
+                                at_least_one_enabled = True
 
-                        if sen.enabled:
-                            _LOGGER.debug("Set METER sensor %s => %s",
-                                          sen.name, sen.value)
+                            if sen.enabled:
+                                _LOGGER.debug("Set METER sensor %s => %s",
+                                              sen.name, sen.value)
 
-                    if not at_least_one_enabled:
-                        raise ET.ParseError
+                        if not at_least_one_enabled:
+                            raise ET.ParseError
 
-                """Calculate the derived sensors"""
+                    """Calculate the derived sensors"""
 
-                sen1 = self.sensors.__getitem__("OutputPower")
-                sen2 = self.sensors.__getitem__("Utilisation")
-                sen2.value = round((float(sen1.value) * 100 / self.max_output), 2)
-                sen2.date = date.today()
-                sen2.enabled = True
-                _LOGGER.debug("Set CALC sensor %s => %s",
-                              sen2.name, sen2.value)
+                    sen1 = self.sensors.__getitem__("OutputPower")
+                    sen2 = self.sensors.__getitem__("Utilisation")
+                    sen2.value = round((float(sen1.value) * 100 / self.max_output), 2)
+                    sen2.date = date.today()
+                    sen2.enabled = True
+                    _LOGGER.debug("Set CALC sensor %s => %s",
+                                  sen2.name, sen2.value)
 
-                return True
+                    return True
+
+                except asyncio.TimeoutError:
+                    return False
 
         except aiohttp.client_exceptions.ClientConnectorError as err:
             # Connection to inverter not possible.
@@ -283,48 +291,52 @@ class EnaSolar(object):
                                              raise_for_status=True) as session:
                 current_url = self.url + URL_PATH_DATA
 
-                async with session.get(current_url) as response:
-                    data = await response.text()
-                    at_least_one_enabled = False
+                try:
+                    async with session.get(current_url) as response:
+                        data = await response.text()
+                        at_least_one_enabled = False
 
-                    xml = ET.fromstring(data)
+                        xml = ET.fromstring(data)
 
-                    for sen in self.sensors:
-                        if sen.is_meter:
-                            continue
-                        find = xml.find(sen.key)
-                        if find is not None:
-                            sen.value = find.text
-                            if sen.is_hex:
-                                sen.value = int(sen.value, 16)
-                            sen.value = (float(sen.value) * sen.factor)
-                            if sen.unit == 'h':
-                                sen.value = '{:,d}:{:02d}'.format(
-                                        *divmod(int(sen.value*60),60)
-                                        )
-                            sen.date = date.today()
-                            sen.enabled = True
-                            at_least_one_enabled = True
+                        for sen in self.sensors:
+                            if sen.is_meter:
+                                continue
+                            find = xml.find(sen.key)
+                            if find is not None:
+                                sen.value = find.text
+                                if sen.is_hex:
+                                    sen.value = int(sen.value, 16)
+                                sen.value = (float(sen.value) * sen.factor)
+                                if sen.unit == 'h':
+                                    sen.value = '{:,d}:{:02d}'.format(
+                                            *divmod(int(sen.value*60),60)
+                                            )
+                                sen.date = date.today()
+                                sen.enabled = True
+                                at_least_one_enabled = True
 
-                        if sen.enabled:
-                            _LOGGER.debug("Set DATA sensor %s => %s",
-                                          sen.name, sen.value)
+                            if sen.enabled:
+                                _LOGGER.debug("Set DATA sensor %s => %s",
+                                              sen.name, sen.value)
 
-                    if not at_least_one_enabled:
-                        raise ET.ParseError
+                        if not at_least_one_enabled:
+                            raise ET.ParseError
 
-                """Calculate the derived sensors"""
+                    """Calculate the derived sensors"""
 
-                sen1 = self.sensors.__getitem__("EnergyLifetime")
-                sen2 = self.sensors.__getitem__("DaysProducing")
-                sen3 = self.sensors.__getitem__("AverageDailyPower")
-                sen3.value = round((float(sen1.value) / sen2.value), 2)
-                sen3.date = date.today()
-                sen3.enabled = True
-                _LOGGER.debug("Set CALC sensor %s => %s",
-                              sen3.name, sen3.value)
+                    sen1 = self.sensors.__getitem__("EnergyLifetime")
+                    sen2 = self.sensors.__getitem__("DaysProducing")
+                    sen3 = self.sensors.__getitem__("AverageDailyPower")
+                    sen3.value = round((float(sen1.value) / sen2.value), 2)
+                    sen3.date = date.today()
+                    sen3.enabled = True
+                    _LOGGER.debug("Set CALC sensor %s => %s",
+                                  sen3.name, sen3.value)
 
-                return True
+                    return True
+
+                except asyncio.TimeoutError:
+                    return False
 
         except aiohttp.client_exceptions.ClientConnectorError as err:
             # Connection to inverter not possible.
