@@ -1,4 +1,5 @@
-"""PyEnaSolar interacts as a library to communicate with EnaSolar inverters"""
+"""PyEnaSolar is a library of functions that communicate with EnaSolar inverters"""
+
 import asyncio
 import concurrent
 import re
@@ -139,9 +140,9 @@ class Sensors(object):
 class EnaSolar(object):
     """Provides access to EnaSolar inverter data"""
 
-    def __init__(self, host):
-        self.host = host
-        self.url = "http://{0}/".format(self.host)
+    def __init__(self):
+        self.host = None
+        self.url = None
         self.serial_no  = None
         self.capability = None
         self.dc_strings = None
@@ -163,7 +164,10 @@ class EnaSolar(object):
     def get_max_output(self):
         return self.max_output
 
-    async def interogate_inverter(self):
+    async def interogate_inverter(self, host):
+        self.host = host
+        self.url = "http://{0}/".format(self.host)
+
         _LOGGER.debug("Attempt to determine the Inverter's Serial No.")
         try:
             timeout=aiohttp.ClientTimeout(total=30)
@@ -218,6 +222,7 @@ class EnaSolar(object):
 
         except aiohttp.client_exceptions.ClientResponseError as err:
             raise UnexpectedResponseException(err)
+
 
     async def read_meters(self):
         try:
@@ -283,6 +288,7 @@ class EnaSolar(object):
                 str.format("No valid XML received from {0} at {1}", self.host,
                            current_url)
             )
+
 
     async def read_data(self):
         try:
@@ -352,6 +358,7 @@ class EnaSolar(object):
                 str.format("No valid XML received from {0} at {1}", self.host,
                            current_url)
             )
+
 
 class UnexpectedResponseException(Exception):
     """Exception for unexpected status code"""
