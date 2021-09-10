@@ -44,7 +44,7 @@ class Sensors(object):
         self.__s = []
         self.add(
             (
-                Sensor("OutputPower", False, "output_power", 1, True, "kWh"),
+                Sensor("OutputPower", False, "output_power", 1, True, "kW"),
                 Sensor("InputVoltage", False, "input_voltage_1", 1, True, "V"),
                 Sensor("OutputVoltage", False, "output_voltage", 1, True, "V"),
                 Sensor("EnergyToday", True, "today_energy", 0.01, False, "kWh", True),
