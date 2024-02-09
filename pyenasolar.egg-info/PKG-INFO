@@ -1,12 +1,10 @@
 Metadata-Version: 2.1
 Name: pyenasolar
-Version: 0.1.6
+Version: 0.2.1
 Summary: Library to communicate with EnaSolar inverters
 Home-page: https://github.com/geustace/pyenasolar
 Author: geustace
 Author-email: glen@eustace.nz
-License: UNKNOWN
-Platform: UNKNOWN
 Classifier: Programming Language :: Python :: 3
 Classifier: License :: OSI Approved :: Apache Software License
 Classifier: Operating System :: OS Independent
@@ -29,6 +27,4 @@ granular data to enable Home Assistant to plot decent graphs.
 
 If the website becomes unresponsive, the only cure found was to reset the inverter by turning
 the AC switch off and on again.
-
-
 

@@ -245,20 +245,30 @@ class EnaSolar:
             async with aiohttp.ClientSession(
                 timeout=timeout, raise_for_status=True
             ) as session:
-                current_url = self.url + "settings.html"
                 try:
+                    current_url = self.url + "wv.txt"
                     async with session.get(current_url) as response:
                         data = await response.text()
-                        pat = re.compile(
-                            r'\(Number\(\("(\d+)"\)\*(\d+)\)\+Number\("(\d+)"\)\)',
-                            re.M | re.I,
-                        )
-                        snum = pat.findall(data)
-                        self.serial_no = int(snum[0][0]) * int(snum[0][1]) + int(
-                            snum[0][2]
-                        )
+                        self.webpage_version = int(data)
 
-                    _LOGGER.debug("Found Serial No. %s", self.serial_no)
+                    _LOGGER.debug("Webpage Version: %s", self.webpage_version)
+                    if self.webpage_version == 25:
+                        current_url = self.url + "settings.html"
+                        async with session.get(current_url) as response:
+                            data = await response.text()
+                            pat = re.compile(
+                                r'\(Number\(\("(\d+)"\)\*(\d+)\)\+Number\("(\d+)"\)\)',
+                                re.M | re.I,
+                            )
+                            snum = pat.findall(data)
+                            self.serial_no = int(snum[0][0]) * int(snum[0][1]) + int(
+                                snum[0][2]
+                            )
+
+                        _LOGGER.debug("Found Serial No. %s", self.serial_no)
+                    else:
+                        _LOGGER.debug("Unknown Webpage Version" );
+                        self.serial_no = 999999
 
                 except aiohttp.client_exceptions.ClientConnectorError as err:
                     # Connection to inverter not possible.
@@ -409,10 +419,6 @@ class EnaSolar:
                                 if sen.is_hex:
                                     sen.value = int(sen.value, 16)
                                 sen.value = float(sen.value) * sen.factor
-                                if sen.unit == "h":
-                                    sen.value = "{:,d}:{:02d}".format(
-                                        *divmod(int(sen.value * 60), 60)
-                                    )
                                 sen.date = date.today()
                                 sen.enabled = True
                                 at_least_one_enabled = True
@@ -459,3 +465,14 @@ class UnexpectedResponseException(Exception):
 
     def __init__(self, message):
         Exception.__init__(self, message)
+
+async def main():
+    logging.basicConfig(filename='pyenasolar.log', level=logging.DEBUG)
+    logging.info('Started')
+    inverter = EnaSolar()
+    await inverter.interogate_inverter( '192.168.1.143' )
+    logging.info('Finished')
+
+if __name__ == "__main__":
+   asyncio.run(main())
+
