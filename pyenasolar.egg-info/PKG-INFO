@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: pyenasolar
-Version: 0.1.3
+Version: 0.1.6
 Summary: Library to communicate with EnaSolar inverters
 Home-page: https://github.com/geustace/pyenasolar
 Author: geustace
