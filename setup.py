@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name="pyenasolar",
-    version="0.2.1",
+    version="1.0.0",
     author="geustace",
     author_email="glen@eustace.nz",
     description="Library to communicate with EnaSolar inverters",

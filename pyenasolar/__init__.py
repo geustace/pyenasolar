@@ -55,99 +55,57 @@ class Sensors:
         self.__s = []
         self.add(
             (
-                Sensor("OutputPower", False, "output_power", 1, True, "kW"),
-                Sensor("InputVoltage", False, "input_voltage_1", 1, True, "V"),
-                Sensor("OutputVoltage", False, "output_voltage", 1, True, "V"),
-                Sensor("EnergyToday", True, "today_energy", 0.01, False, "kWh", True),
-                Sensor(
-                    "EnergyYesterday",
-                    True,
-                    "yesterday_energy",
-                    0.01,
-                    False,
-                    "kWh",
-                    True,
-                ),
-                Sensor(
-                    "EnergyLifetime",
-                    True,
-                    "total_energy",
-                    0.01,
-                    False,
-                    "kWh",
-                    False,
-                    True,
-                ),
-                Sensor(
-                    "DaysProducing", True, "days_producing", 1, False, "d", False, True
-                ),
-                Sensor(
-                    "HoursExportedToday", False, "today_hours", 0.0167, False, "h", True
-                ),
-                Sensor(
-                    "HoursExportedYesterday",
-                    False,
-                    "yesterday_hours",
-                    0.0167,
-                    False,
-                    "h",
-                    True,
-                ),
-                Sensor(
-                    "HoursExportedLifetime",
-                    True,
-                    "total_hours",
-                    0.0167,
-                    False,
-                    "h",
-                    False,
-                    True,
-                ),
-                Sensor("Utilisation", False, "utilisation", 1, True, "%"),
-                Sensor(
-                    "AverageDailyPower",
-                    False,
-                    "average_daily_power",
-                    1,
-                    False,
-                    "kWh",
-                    True,
-                    True,
-                ),
+                Sensor("OutputPower", False, "output_power",
+                       1, True, "kW"),
+                Sensor("InputVoltage", False, "input_voltage_1",
+                       1, True, "V"),
+                Sensor("OutputVoltage", False, "output_voltage",
+                       1, True, "V"),
+                Sensor("EnergyToday", True, "today_energy",
+                       0.01, False, "kWh", True),
+                Sensor("EnergyYesterday", True, "yesterday_energy",
+                       0.01, False, "kWh", True),
+                Sensor("EnergyLifetime", True, "total_energy",
+                       0.01, False, "kWh", False, True),
+                Sensor("DaysProducing", True, "days_producing",
+                       1, False, "d", False, True),
+                Sensor("HoursExportedToday", False, "today_hours",
+                       0.0167, False, "h", True),
+                Sensor("HoursExportedYesterday", False, "yesterday_hours",
+                       0.0167, False, "h", True),
+                Sensor("HoursExportedLifetime", True, "total_hours",
+                       0.0167, False, "h", False, True),
+                Sensor("Utilisation", False, "utilisation",
+                       1, True, "%"),
+                Sensor("AverageDailyPower", False, "average_daily_power",
+                       1, False, "kWh", True, True),
             )
         )
         if inv.dc_strings == 2:
-            self.add((Sensor("InputVoltage2", False, "input_voltage_2", 1, True, "V")))
+            self.add((Sensor("InputVoltage2", False, "input_voltage_2",
+                             1, True, "V")))
 
         if inv.capability & HAS_POWER_METER:
             self.add(
                 (
-                    Sensor("MeterToday", True, "meter_today", 1, False, "kWh"),
-                    Sensor("MeterYesterday", True, "meter_yesterday", 10, False, "kWh"),
-                    Sensor("MeterLifetime", True, "meter_lifetime", 1, False, "kWh"),
+                    Sensor("MeterToday", True, "meter_today",
+                           1, False, "kWh"),
+                    Sensor("MeterYesterday", True, "meter_yesterday",
+                           10, False, "kWh"),
+                    Sensor("MeterLifetime", True, "meter_lifetime",
+                           1, False, "kWh"),
                 )
             )
 
         if inv.capability & HAS_SOLAR_METER:
             self.add(
                 (
-                    Sensor("Irradiance", False, "irradiance", 1, True, "W/m2"),
-                    Sensor(
-                        "InsolationToday",
-                        True,
-                        "insolation_today",
-                        0.001,
-                        False,
-                        "kWh/m2",
-                    ),
-                    Sensor(
-                        "InsolationYesterday",
-                        True,
-                        "insolation_yesterday",
-                        0.001,
-                        False,
-                        "kWh/m2",
-                    ),
+                    Sensor("Irradiance", False, "irradiance",
+                           1, True, "W/m2"),
+                    Sensor("InsolationToday", True, "insolation_today",
+                           0.001, False, "kWh/m2"),
+                    Sensor("InsolationYesterday", True, "insolation_yesterday",
+                           0.001, False, "kWh/m2"),
                 )
             )
 
@@ -155,7 +113,8 @@ class Sensors:
             t_unit = "C"
             if inv.capability & USE_FAHRENHIET:
                 t_unit = "F"
-            self.add((Sensor("Temperature", False, "temperature", 1, True, t_unit),))
+            self.add((Sensor("Temperature", False, "temperature",
+                             1, True, t_unit),))
 
     def __len__(self) -> int:
         """Length."""
@@ -239,6 +198,8 @@ class EnaSolar:
         self.host = host
         self.url = "http://{0}/".format(self.host)
 
+        version_ok = {21, 25, 26}
+
         _LOGGER.debug("Attempt to determine the Inverter's Serial No.")
         try:
             timeout = aiohttp.ClientTimeout(total=30)
@@ -249,10 +210,10 @@ class EnaSolar:
                     current_url = self.url + "wv.txt"
                     async with session.get(current_url) as response:
                         data = await response.text()
-                        self.webpage_version = int(data)
+                        webpage_version = int(data)
 
-                    _LOGGER.debug("Webpage Version: %s", self.webpage_version)
-                    if self.webpage_version == 25:
+                    _LOGGER.debug("Webpage Version: %s", webpage_version)
+                    if webpage_version in version_ok:
                         current_url = self.url + "settings.html"
                         async with session.get(current_url) as response:
                             data = await response.text()
@@ -261,19 +222,23 @@ class EnaSolar:
                                 re.M | re.I,
                             )
                             snum = pat.findall(data)
-                            self.serial_no = int(snum[0][0]) * int(snum[0][1]) + int(
-                                snum[0][2]
-                            )
-
-                        _LOGGER.debug("Found Serial No. %s", self.serial_no)
+                            if snum:
+                                self.serial_no = int(snum[0][0]) * \
+                                                 int(snum[0][1]) + \
+                                                 int(snum[0][2])
+                                _LOGGER.debug("Found Serial No. %s",
+                                              self.serial_no)
+                            else:
+                                _LOGGER.debug("Unable to extract Serial No.")
                     else:
-                        _LOGGER.debug("Unknown Webpage Version" );
+                        _LOGGER.debug("Unknown Webpage Version")
                         self.serial_no = 999999
 
                 except aiohttp.client_exceptions.ClientConnectorError as err:
                     # Connection to inverter not possible.
                     _LOGGER.warning(
-                        "Connection failed. Check FQDN or IP address - %s", str(err)
+                        "Connection failed. Check FQDN or IP address - %s",
+                        str(err)
                     )
                     raise
                 except asyncio.TimeoutError:
@@ -290,33 +255,61 @@ class EnaSolar:
             async with aiohttp.ClientSession(
                 timeout=timeout, raise_for_status=True
             ) as session:
-                current_url = self.url
-                try:
-                    async with session.get(current_url) as response:
-                        data = await response.text()
-                        pat = re.compile(r'Number\("(\d+|\d+\.\d+)"\);', re.M | re.I)
-                        cap = pat.findall(data)
-                        self.capability = int(cap[0])
-                        self.dc_strings = int(cap[1])
-                        self.max_output = float(cap[2])
-
+                if webpage_version in {25, 26}:
+                    current_url = self.url
+                    try:
+                        async with session.get(current_url) as response:
+                            data = await response.text()
+                            pat = re.compile(r'Number\("(\d+|\d+\.\d+)"\);',
+                                             re.M | re.I)
+                            cap = pat.findall(data)
+                            if cap:
+                                try:
+                                    self.capability = int(cap[0])
+                                    self.dc_strings = int(cap[1])
+                                    self.max_output = float(cap[2])
+                                    _LOGGER.debug(
+                                        "Found: CAP=%s, DC=%s, Max=%s",
+                                        self.capability,
+                                        self.dc_strings,
+                                        self.max_output,
+                                    )
+                                except:
+                                    self.capability = 0
+                                    self.dc_strings = 1
+                                    self.max_output = 2.0
+                                    _LOGGER.debug(
+                                        "Failed to extract Inverter capabilities"
+                                    )
+                            else:
+                                _LOGGER.debug(
+                                    "Unable to extract Inverter capabilities"
+                                )
+                    except aiohttp.client_exceptions.ClientResponseError as err:
+                        # Connection to inverter succeeded but not expected result
+                        _LOGGER.warning("Connection to inverter succeeded. %s",
+                                        str(err))
+                        raise
+                else:
+                    self.capability = 0
+                    self.dc_strings = 1
+                    self.max_output = 2.0
                     _LOGGER.debug(
-                        "Found: CAP=%s, DC=%s, Max=%s",
-                        self.capability,
-                        self.dc_strings,
-                        self.max_output,
+                        "Inverter capabilities not available with this version"
                     )
 
-                except aiohttp.ClientConnectorError as err:
-                    # Connection to inverter not possible.
-                    _LOGGER.warning(
-                        "Connection failed. Check FQDN or IP address - %s", str(err)
-                    )
-                    raise
-                except asyncio.TimeoutError:
-                    # Connection to inverter timeout
-                    _LOGGER.warning("Connection to inverter timeout.")
-                    raise
+        except aiohttp.ClientConnectorError as err:
+            # Connection to inverter not possible.
+            _LOGGER.warning(
+                "Connection failed. Check FQDN or IP address - %s",
+                str(err)
+            )
+            raise
+
+        except asyncio.TimeoutError:
+            # Connection to inverter timeout
+            _LOGGER.warning("Connection to inverter timeout.")
+            raise
 
         except aiohttp.client_exceptions.ClientResponseError as err:
             # Connection to inverter succeeded but not expected result
@@ -354,7 +347,8 @@ class EnaSolar:
 
                             if sen.enabled:
                                 _LOGGER.debug(
-                                    "Set METER sensor %s => %s", sen.name, sen.value
+                                    "Set METER sensor %s => %s",
+                                    sen.name, sen.value
                                 )
 
                         if not at_least_one_enabled:
@@ -362,12 +356,14 @@ class EnaSolar:
 
                     # Calculate the derived sensors
 
-                    sen1 = self.sensors.__getitem__("OutputPower")
-                    sen2 = self.sensors.__getitem__("Utilisation")
-                    sen2.value = round((float(sen1.value) * 100 / self.max_output), 2)
+                    sen1 = self.sensors["OutputPower"]
+                    sen2 = self.sensors["Utilisation"]
+                    sen2.value = round((float(sen1.value) * 100 /
+                                        self.max_output), 2)
                     sen2.date = date.today()
                     sen2.enabled = True
-                    _LOGGER.debug("Set CALC sensor %s => %s", sen2.name, sen2.value)
+                    _LOGGER.debug("Set CALC sensor %s => %s",
+                                  sen2.name, sen2.value)
 
                     return True
 
@@ -377,20 +373,23 @@ class EnaSolar:
         except aiohttp.client_exceptions.ClientConnectorError as err:
             # Connection to inverter not possible.
             _LOGGER.warning(
-                "Connection failed. Check FQDN or IP address - %s", str(err)
+                "Connection failed. Check FQDN or IP address - %s",
+                str(err)
             )
             raise
 
         except aiohttp.client_exceptions.ClientResponseError as err:
             # Connection to inverter succeeded but not expected result
-            _LOGGER.warning("Connection to inverter succeeded. %s", str(err))
+            _LOGGER.warning("Connection to inverter succeeded. %s",
+                            str(err))
             raise
 
         except ET.ParseError:
             # XML is not valid or even no XML at all
             raise UnexpectedResponseException(
                 str.format(
-                    "No valid XML received from {0} at {1}", self.host, current_url
+                    "No valid XML received from {0} at {1}",
+                    self.host, current_url
                 )
             )
 
@@ -425,7 +424,8 @@ class EnaSolar:
 
                             if sen.enabled:
                                 _LOGGER.debug(
-                                    "Set DATA sensor %s => %s", sen.name, sen.value
+                                    "Set DATA sensor %s => %s",
+                                    sen.name, sen.value
                                 )
 
                         if not at_least_one_enabled:
@@ -433,14 +433,14 @@ class EnaSolar:
 
                     # Calculate the derived sensors
 
-                    sen1 = self.sensors.__getitem__("EnergyLifetime")
-                    sen2 = self.sensors.__getitem__("DaysProducing")
-                    sen3 = self.sensors.__getitem__("AverageDailyPower")
+                    sen1 = self.sensors["EnergyLifetime"]
+                    sen2 = self.sensors["DaysProducing"]
+                    sen3 = self.sensors["AverageDailyPower"]
                     sen3.value = round((float(sen1.value) / sen2.value), 2)
                     sen3.date = date.today()
                     sen3.enabled = True
-                    _LOGGER.debug("Set CALC sensor %s => %s", sen3.name, sen3.value)
-
+                    _LOGGER.debug("Set CALC sensor %s => %s",
+                                  sen3.name, sen3.value)
                     return True
 
                 except asyncio.TimeoutError:
@@ -448,14 +448,16 @@ class EnaSolar:
 
         except aiohttp.client_exceptions.ClientConnectorError as err:
             # Connection to inverter not possible.
-            _LOGGER.warning("Connection to inverter failed. %s", str(err))
+            _LOGGER.warning("Connection to inverter failed. %s",
+                            str(err))
             raise
 
         except ET.ParseError:
             # XML is not valid or even no XML at all
             raise UnexpectedResponseException(
                 str.format(
-                    "No valid XML received from {0} at {1}", self.host, current_url
+                    "No valid XML received from {0} at {1}",
+                    self.host, current_url
                 )
             )
 
@@ -466,13 +468,18 @@ class UnexpectedResponseException(Exception):
     def __init__(self, message):
         Exception.__init__(self, message)
 
+
 async def main():
+    """ Interogate local inverter for testing purposes"""
+
     logging.basicConfig(filename='pyenasolar.log', level=logging.DEBUG)
     logging.info('Started')
     inverter = EnaSolar()
-    await inverter.interogate_inverter( '192.168.1.143' )
+    await inverter.interogate_inverter('192.168.1.143')
+    inverter.setup_sensors()
+    await inverter.read_meters()
+    await inverter.read_data()
     logging.info('Finished')
 
 if __name__ == "__main__":
-   asyncio.run(main())
-
+    asyncio.run(main())
